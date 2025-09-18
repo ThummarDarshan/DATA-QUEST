@@ -1,0 +1,48 @@
+/* PLEASE NOTE: THESE TAILWIND IMPORTS SHOULD NEVER BE DELETED */
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+/* DO NOT DELETE THESE TAILWIND IMPORTS, OTHERWISE THE STYLING WILL NOT RENDER AT ALL */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+@keyframes slideDown {
+  0% {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+.animate-slideDown {
+  animation: slideDown 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* Base dark-mode readability improvements */
+@layer base {
+  html { color-scheme: light dark; }
+  body { @apply text-gray-900 bg-gray-50 dark:text-gray-100 dark:bg-gray-900; }
+  input, select, textarea { @apply text-gray-900 bg-white border border-gray-300 dark:text-gray-100 dark:bg-gray-900 dark:border-gray-700; }
+  .modal-surface { @apply bg-white/80 dark:bg-gray-900/85 text-gray-900 dark:text-gray-100; }
+  .btn-muted { @apply text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-700; }
+}
+
+/* Hide scrollbars utility */
+.no-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar { display: none; }
