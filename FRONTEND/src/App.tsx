@@ -4,23 +4,131 @@ import { SendIcon, Sparkles, History, Plus, X, Mic } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { Header } from './components/Header';
 import { useAuth } from './components/AuthContext';
+import { useChatSessions, useChatMessages } from './hooks/useApi';
+import { ErrorMessage } from './components/ErrorMessage';
+import { LoadingSpinner } from './components/LoadingSpinner';
+import { FileUploadModal } from './components/FileUpload';
+
+// Utility function to get full avatar URL
+const getAvatarUrl = (avatar?: string): string => {
+  if (!avatar) return '';
+  if (avatar.startsWith('http')) return avatar;
+  if (avatar.startsWith('/uploads/')) return `http://localhost:5000${avatar}`; // Use full backend URL with CORS
+  if (avatar.startsWith('data:')) return avatar; // base64 data
+  return avatar;
+};
+
+// Utility function to format timestamps
+const formatTimestamp = (timestamp: any): string => {
+  if (!timestamp) return '';
+  
+  // Handle different timestamp formats
+  let date: Date;
+  
+  // Debug what we're receiving
+  console.log('formatTimestamp received:', typeof timestamp, timestamp);
+  
+  // If timestamp is already a Date object
+  if (timestamp instanceof Date) {
+    date = timestamp;
+  } 
+  // If timestamp is a string
+  else if (typeof timestamp === 'string') {
+    date = new Date(timestamp);
+  }
+  // If timestamp is an object (like from Sequelize), try to extract the date
+  else if (typeof timestamp === 'object' && timestamp !== null) {
+    // Try common date properties
+    if (timestamp.createdAt) {
+      date = new Date(timestamp.createdAt);
+    } else if (timestamp.date) {
+      date = new Date(timestamp.date);
+    } else if (timestamp.timestamp) {
+      date = new Date(timestamp.timestamp);
+    } else {
+      // Try to convert the object to string and parse
+      date = new Date(timestamp.toString());
+    }
+  }
+  // If it's a number (Unix timestamp)
+  else if (typeof timestamp === 'number') {
+    // Check if it's in seconds or milliseconds
+    if (timestamp < 10000000000) {
+      // Unix timestamp in seconds
+      date = new Date(timestamp * 1000);
+    } else {
+      // Unix timestamp in milliseconds
+      date = new Date(timestamp);
+    }
+  }
+  else {
+    console.warn('Invalid timestamp type:', typeof timestamp, timestamp);
+    return 'Invalid date';
+  }
+  
+  // Check if date is valid
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid date after parsing:', timestamp);
+    return 'Invalid date';
+  }
+  
+  const now = new Date();
+  
+  // Get local date components for comparison
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  
+  // Calculate difference in days
+  const diffInDays = Math.floor((today.getTime() - messageDate.getTime()) / (1000 * 60 * 60 * 24));
+  
+  // For debugging - log the date calculation
+  console.log('Date formatting result:', {
+    originalTimestamp: timestamp,
+    parsedDate: date.toISOString(),
+    localDate: date.toLocaleDateString(),
+    now: now.toISOString(),
+    localNow: now.toLocaleDateString(),
+    diffInDays,
+    messageDate: messageDate.toISOString(),
+    today: today.toISOString()
+  });
+  
+  // If the message is from today
+  if (diffInDays === 0) {
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+  // If the message is from yesterday
+  else if (diffInDays === 1) {
+    return `Yesterday ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  }
+  // If the message is from this week (within 7 days)
+  else if (diffInDays < 7) {
+    return date.toLocaleDateString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+  // For older messages, show date and time
+  else {
+    return date.toLocaleDateString([], { 
+      month: 'short', 
+      day: 'numeric', 
+      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  }
+};
+
 export function App() {
-  type HistoryItem = { id: string; label: string; at: number };
-  type ChatMessage = { role: 'user' | 'assistant'; content: string };
-  type ChatSession = { id: string; title: string; createdAt: number; messages: ChatMessage[] };
-  const [messages, setMessages] = useState<Array<ChatMessage>>([]);
   const [input, setInput] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
-  // Legacy lightweight history kept for future; not used in UI now
-  const [/*historyItems*/, setHistoryItems] = useState<HistoryItem[]>([]);
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sessionMenuId, setSessionMenuId] = useState<string | null>(null);
   const [modal, setModal] = useState<null | { type: 'rename' | 'share' | 'remove'; id: string }>(null);
   const [renameValue, setRenameValue] = useState('');
   const [bottomPadding, setBottomPadding] = useState<number>(160);
   const [isListening, setIsListening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [fileUploadOpen, setFileUploadOpen] = useState(false);
+  
   const recognitionRef = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const lastMessageRef = useRef<HTMLDivElement>(null);
@@ -31,89 +139,86 @@ export function App() {
   const historyRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const inputBarRef = useRef<HTMLDivElement>(null);
+  
+  const { user } = useAuth();
+  
+  // Use API hooks
   const {
-    user
-  } = useAuth();
-  // Load history from localStorage (legacy)
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('app_history');
-      if (raw) setHistoryItems(JSON.parse(raw));
-    } catch {}
-  }, []);
-  // Load chat sessions
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem('chat_sessions');
-      if (raw) setSessions(JSON.parse(raw));
-    } catch {}
-  }, []);
-  const persistSessions = (next: ChatSession[]) => {
-    setSessions(next);
-    localStorage.setItem('chat_sessions', JSON.stringify(next));
-  };
+    sessions,
+    error: sessionsError,
+    createSession,
+    updateSession,
+    deleteSession,
+    clearAllSessions,
+  } = useChatSessions();
+  
+  const {
+    messages,
+    loading: messagesLoading,
+    error: messagesError,
+    sendMessage,
+  } = useChatMessages(currentSessionId);
   const deriveTitle = (): string => {
     const titleBase = messages.find(m => m.role === 'user')?.content || 'New chat';
     return titleBase.slice(0, 40);
   };
-  const saveCurrentAsSession = () => {
-    if (messages.length === 0) return;
-    if (currentSessionId) {
-      const existing = sessions.find(s => s.id === currentSessionId);
-      if (existing) {
-        const updated: ChatSession = { ...existing, title: existing.title || deriveTitle(), messages: messages };
-        const others = sessions.filter(s => s.id !== currentSessionId);
-        persistSessions([updated, ...others]);
-        return;
-      }
+
+  const startNewChat = async () => {
+    setError(null);
+    const newSession = await createSession('New chat');
+    if (newSession) {
+      setCurrentSessionId(newSession.id);
+      setInput('');
+      setHistoryOpen(false);
+    } else {
+      setError('Failed to create new chat session');
     }
-    const newSession: ChatSession = {
-      id: crypto.randomUUID(),
-      title: deriveTitle(),
-      createdAt: Date.now(),
-      messages: messages
-    };
-    persistSessions([newSession, ...sessions]);
   };
-  const startNewChat = () => {
-    // Save current conversation first
-    if (messages.length > 0) saveCurrentAsSession();
-    // Create an empty session immediately so History reflects it
-    const newId = crypto.randomUUID();
-    const newSession: ChatSession = { id: newId, title: 'New chat', createdAt: Date.now(), messages: [] };
-    persistSessions([newSession, ...sessions]);
-    setMessages([]);
-    setCurrentSessionId(newId);
-    setInput('');
-    setHistoryOpen(false);
-  };
+
   const openSession = (id: string) => {
-    const s = sessions.find(x => x.id === id);
-    if (!s) return;
-    setMessages(s.messages);
-    setCurrentSessionId(s.id);
+    setCurrentSessionId(id);
     setHistoryOpen(false);
   };
-  const clearAllSessions = () => {
-    persistSessions([]);
-  };
-  const renameSession = (id: string, title: string) => {
-    if (!title.trim()) return;
-    const updated = sessions.map(s => s.id === id ? { ...s, title: title.trim() } : s);
-    persistSessions(updated);
-  };
-  const deleteSession = (id: string) => {
-    const updated = sessions.filter(s => s.id !== id);
-    persistSessions(updated);
-    if (currentSessionId === id) {
-      setMessages([]);
+
+  const handleClearAllSessions = async () => {
+    setError(null);
+    const success = await clearAllSessions();
+    if (success) {
       setCurrentSessionId(null);
+    } else {
+      setError('Failed to clear all sessions');
+    }
+  };
+
+  const handleRenameSession = async (id: string, title: string) => {
+    if (!title.trim()) return;
+    setError(null);
+    const success = await updateSession(id, { title: title.trim() });
+    if (!success) {
+      setError('Failed to rename session');
+    }
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    setError(null);
+    const success = await deleteSession(id);
+    if (success) {
+      if (currentSessionId === id) {
+        setCurrentSessionId(null);
+      }
+    } else {
+      setError('Failed to delete session');
     }
   };
   const buildTranscript = (id: string): string => {
+    if (id === currentSessionId) {
+      return messages.map(m => `${m.role === 'user' ? 'You' : 'Fixit'}: ${m.content}`).join('\n');
+    }
     const s = sessions.find(x => x.id === id);
     if (!s) return '';
-    return s.messages.map(m => `${m.role === 'user' ? 'You' : 'Fixit'}: ${m.content}`).join('\n');
+    // For sessions not currently loaded, we'd need to fetch messages
+    // For now, return a placeholder
+    return `Chat session: ${s.title}`;
   };
   const buildShareLink = (id: string): string => {
     try {
@@ -123,13 +228,6 @@ export function App() {
     } catch {
       return window.location.href;
     }
-  };
-  const pushHistory = (label: string) => {
-    setHistoryItems(prev => {
-      const next = [{ id: crypto.randomUUID(), label, at: Date.now() }, ...prev].slice(0, 20);
-      localStorage.setItem('app_history', JSON.stringify(next));
-      return next;
-    });
   };
   // Close history when clicking outside
   useEffect(() => {
@@ -179,7 +277,7 @@ export function App() {
       clearTimeout(t);
       window.removeEventListener('resize', onResize);
     };
-  }, [messages, isLoading, scrollToLatest]);
+  }, [messages, messagesLoading, scrollToLatest]);
   // Auto-resize textarea based on content
   useEffect(() => {
     if (textareaRef.current) {
@@ -210,10 +308,6 @@ export function App() {
       window.removeEventListener('resize', measure);
     };
   }, []);
-  const addSystemMessage = (text: string) => {
-    const m = { role: 'assistant' as const, content: text };
-    setMessages(prev => [...prev, m]);
-  };
   // Initialize speech recognition lazily
   const ensureRecognition = () => {
     if (recognitionRef.current) return recognitionRef.current;
@@ -246,52 +340,29 @@ export function App() {
   };
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
-    // Add user message to chat
-    const userMessage = {
-      role: 'user' as const,
-      content: input.trim()
-    };
-    setMessages(prev => [...prev, userMessage]);
-    // Auto-scroll immediately after adding user's message
-    requestAnimationFrame(() => scrollToLatest());
-    pushHistory(`You: ${input.trim().slice(0, 80)}`);
-    setInput('');
-    setIsLoading(true);
-    try {
-      // In a real implementation, this would be an API call to your backend
-      // which would then call the Fixit API
-      // For demo purposes, we'll simulate a response
-      setTimeout(() => {
-        const aiResponse = {
-          role: 'assistant' as const,
-          content: simulateGeminiResponse(input.trim())
-        };
-        setMessages(prev => [...prev, aiResponse]);
-        pushHistory(`Fixit: ${aiResponse.content.slice(0, 80)}`);
-        // If editing a previously opened session, update it live
-        if (currentSessionId) {
-          const updated = sessions.map(s => s.id === currentSessionId ? { ...s, messages: [...s.messages, userMessage, aiResponse] } : s);
-          persistSessions(updated);
-        }
-        setIsLoading(false);
-      }, 1000);
-    } catch (error) {
-      console.error('Error getting response:', error);
-      setIsLoading(false);
+    if (!input.trim() || messagesLoading) return;
+    
+    let sessionId = currentSessionId;
+    
+    if (!sessionId) {
+      // Create a new session if none exists
+      const newSession = await createSession(deriveTitle());
+      if (!newSession) {
+        setError('Failed to create chat session');
+        return;
+      }
+      sessionId = newSession.id;
+      setCurrentSessionId(sessionId);
     }
-  };
-  // This function simulates a response from Fixit API
-  // In a real implementation, this would be replaced with an actual API call
-  const simulateGeminiResponse = (prompt: string): string => {
-    if (prompt.toLowerCase().includes('hello') || prompt.toLowerCase().includes('hi')) {
-      return `Hello${user ? ' ' + user.name : ''}! I'm Fixit, an AI assistant. How can I help you today?`;
-    } else if (prompt.toLowerCase().includes('help')) {
-      return "I'm here to help! You can ask me questions, request information, or just chat. What would you like to know?";
-    } else if (prompt.toLowerCase().includes('markdown')) {
-      return "# Markdown Example\n\nI support various Markdown features:\n\n- **Bold text**\n- *Italic text*\n- `Code snippets`\n\n```javascript\nconst example = 'This is a code block';\nconsole.log(example);\n```";
-    } else {
-      return 'Thank you for your message. This is a simulated response. In a real implementation, this would be a response from the Fixit API. The prompt you sent was: "' + prompt + '"';
+
+    setError(null);
+    const userMessage = input.trim();
+    setInput('');
+    
+    // Send message via API with the correct session ID
+    const response = await sendMessage(userMessage, sessionId || undefined);
+    if (!response) {
+      setError('Failed to send message');
     }
   };
   return <div className="flex flex-col h-screen bg-gray-50 dark:bg-gray-900">
@@ -299,6 +370,16 @@ export function App() {
       <Header />
       {/* Main chat container */}
       <div className="flex-1 overflow-auto p-4 sm:p-6 md:p-8 relative text-gray-900 dark:text-gray-100" ref={scrollContainerRef} style={{ paddingBottom: bottomPadding }}>
+        {/* Error Display */}
+        {(error || sessionsError || messagesError) && (
+          <div className="max-w-3xl mx-auto mb-4">
+            <ErrorMessage
+              error={error || sessionsError || messagesError || 'An error occurred'}
+              variant="inline"
+              onDismiss={() => setError(null)}
+            />
+          </div>
+        )}
         {/* Floating actions - left side stack */}
         <div className="fixed left-4 top-20 z-40 flex flex-col items-start gap-2" ref={historyRef}>
           <button onClick={startNewChat} className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-full text-sm font-medium text-white shadow-[0_10px_30px_rgba(0,0,0,0.15)] hover:shadow-[0_12px_36px_rgba(0,0,0,0.2)] transition-shadow backdrop-blur-md focus:outline-none focus:ring-2 focus:ring-emerald-500 min-w-[130px]" style={{ backgroundImage: 'linear-gradient(135deg, rgba(16,185,129,0.95) 0%, rgba(59,130,246,0.95) 100%)' }}>
@@ -340,7 +421,7 @@ export function App() {
                     ))}
                   </div>
                   <div className="p-2 border-t border-black/5 dark:border-white/10 flex justify-end">
-                    <button onClick={clearAllSessions} className="text-xs px-2 py-1 rounded-md btn-muted hover:bg-gray-50 dark:hover:bg-gray-800">Clear all</button>
+                    <button onClick={handleClearAllSessions} className="text-xs px-2 py-1 rounded-md btn-muted hover:bg-gray-50 dark:hover:bg-gray-800">Clear all</button>
                   </div>
                 </div>
               </div>
@@ -353,7 +434,7 @@ export function App() {
               <div className="w-full max-w-md rounded-2xl border border-white/40 dark:border-white/10 bg-white/80 dark:bg-gray-900/80 backdrop-blur-xl shadow-2xl animate-slideDown">
                 {modal.type === 'rename' && <div>
                     <div className="px-5 py-4 border-b border-black/5 dark:border-white/10 text-sm font-medium text-gray-700 dark:text-gray-200">Rename chat</div>
-                    <form className="p-5 space-y-4" onSubmit={e => { e.preventDefault(); renameSession(modal.id, renameValue); setModal(null); }}>
+                    <form className="p-5 space-y-4" onSubmit={e => { e.preventDefault(); handleRenameSession(modal.id, renameValue); setModal(null); }}>
                       <input autoFocus value={renameValue} onChange={e => setRenameValue(e.target.value)} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white/70 dark:bg-gray-800/70 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter chat name" />
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-50 dark:hover:bg-gray-800 dark:border-gray-700">Cancel</button>
@@ -392,7 +473,7 @@ export function App() {
                       <p className="text-sm text-gray-600 dark:text-gray-300">Are you sure you want to delete this chat? This action cannot be undone.</p>
                       <div className="flex justify-end gap-2">
                         <button type="button" onClick={() => setModal(null)} className="px-4 py-2 rounded-lg border text-sm hover:bg-gray-50 dark:hover:bg-gray-800 dark:border-gray-700">Cancel</button>
-                        <button type="button" onClick={() => { deleteSession(modal.id); setModal(null); }} className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
+                        <button type="button" onClick={() => { handleDeleteSession(modal.id); setModal(null); }} className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600 hover:bg-red-700">Delete</button>
                       </div>
                     </div>
                   </div>}
@@ -422,31 +503,26 @@ export function App() {
                 <div className="flex items-start">
                   {/* Avatar */}
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-4 shadow-sm ${message.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                    {message.role === 'user' ? user ? <img src={user.avatar} alt={user.name} className="w-8 h-8 rounded-full" /> : 'U' : <Sparkles className="h-4 w-4" />}
+                    {message.role === 'user' ? user ? <img src={getAvatarUrl(user.avatar)} alt={user.name} className="w-8 h-8 rounded-full" /> : 'U' : <Sparkles className="h-4 w-4" />}
                   </div>
                   {/* Message content */}
                   <div className={`flex-1 prose prose-slate dark:prose-invert max-w-none ${message.role === 'assistant' ? 'bg-white p-4 rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700' : ''}`}>
                     <ReactMarkdown>{message.content}</ReactMarkdown>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-2 opacity-70">
+                      {formatTimestamp(message.createdAt)}
+                    </div>
                   </div>
                 </div>
               </div>)}
           </div>
           {/* Loading indicator */}
-          {isLoading && <div className="mb-6 pl-4 mt-6">
+          {messagesLoading && <div className="mb-6 pl-4 mt-6">
               <div className="flex items-start">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mr-4 shadow-sm">
                   <Sparkles className="h-4 w-4" />
                 </div>
                 <div className="flex-1 bg-white p-4 rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700">
-                  <div className="flex space-x-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-gray-300 animate-pulse"></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-gray-300 animate-pulse" style={{
-                  animationDelay: '0.2s'
-                }}></div>
-                    <div className="w-2.5 h-2.5 rounded-full bg-gray-300 animate-pulse" style={{
-                  animationDelay: '0.4s'
-                }}></div>
-                  </div>
+                  <LoadingSpinner size="sm" text="Thinking..." />
                 </div>
               </div>
             </div>}
@@ -474,20 +550,20 @@ export function App() {
                   {attachOpen && (
                     <div className="absolute bottom-[calc(100%+8px)] left-1/2 -translate-x-1/2 z-50 w-56 rounded-md border border-black/5 dark:border-white/10 bg-white dark:bg-gray-800 shadow-lg">
                       <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { setAttachOpen(false); imageInputRef.current?.click(); }}>Upload photo</button>
-                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { setAttachOpen(false); fileInputRef.current?.click(); }}>Upload file</button>
+                      <button className="w-full text-left px-4 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-700" onClick={() => { setAttachOpen(false); setFileUploadOpen(true); }}>Upload file</button>
                     </div>
                   )}
                 </div>
                 <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={async e => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  addSystemMessage(`Image selected: ${f.name}`);
+                  console.log(`Image selected: ${f.name}`);
                   e.currentTarget.value = '';
                 }} />
                 <input ref={fileInputRef} type="file" className="hidden" onChange={async e => {
                   const f = e.target.files?.[0];
                   if (!f) return;
-                  addSystemMessage(`File selected: ${f.name}`);
+                  console.log(`File selected: ${f.name}`);
                   e.currentTarget.value = '';
                 }} />
               </div>
@@ -496,7 +572,7 @@ export function App() {
                 <button type="button" onClick={toggleVoice} className={`h-10 w-10 inline-flex items-center justify-center rounded-full transition ${isListening ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700/70 dark:text-gray-200 dark:hover:bg-gray-700'}`} aria-label="Voice">
                   <Mic className="h-4 w-4" />
                 </button>
-                <button type="submit" className="h-10 w-10 inline-flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700/70 dark:text-gray-200 dark:hover:bg-gray-700 transition disabled:opacity-50" disabled={!input.trim() || isLoading} aria-label="Send message">
+                <button type="submit" className="h-10 w-10 inline-flex items-center justify-center rounded-full bg-gray-200 text-gray-700 hover:bg-gray-300 dark:bg-gray-700/70 dark:text-gray-200 dark:hover:bg-gray-700 transition disabled:opacity-50" disabled={!input.trim() || messagesLoading} aria-label="Send message">
                   <SendIcon className="h-4 w-4" />
                 </button>
               </div>
@@ -508,5 +584,16 @@ export function App() {
           </p>
         </div>
       </div>
+      
+      {/* File Upload Modal */}
+      <FileUploadModal
+        isOpen={fileUploadOpen}
+        onClose={() => setFileUploadOpen(false)}
+        sessionId={currentSessionId || undefined}
+        onUploadComplete={(file) => {
+          console.log('File uploaded:', file);
+          setFileUploadOpen(false);
+        }}
+      />
     </div>;
 }

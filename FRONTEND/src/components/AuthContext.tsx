@@ -1,19 +1,19 @@
 import React, { useEffect, useState, createContext, useContext } from 'react';
-type User = {
-  id: string;
-  name: string;
-  email: string;
-  avatar: string;
-};
+import { authApi, apiClient, User } from '../services/api';
+
 type AuthContextType = {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<boolean>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  signup: (name: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
-  updateUser: (updates: Partial<User>) => void;
+  updateUser: (updates: Partial<User>) => Promise<{ success: boolean; error?: string }>;
+  refreshUser: () => Promise<void>;
 };
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (context === undefined) {
@@ -21,67 +21,144 @@ export const useAuth = () => {
   }
   return context;
 };
+
 export const AuthProvider: React.FC<{
   children: React.ReactNode;
-}> = ({
-  children
-}) => {
+}> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  // Check for saved user on mount
+
+  // Check for saved user and token on mount
   useEffect(() => {
-    const savedUser = localStorage.getItem('gemini_user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
-    setIsLoading(false);
-  }, []);
-  // Mock login function
-  const login = async (email: string, password: string): Promise<boolean> => {
-    setIsLoading(true);
-    // Simulate API call
-    return new Promise(resolve => {
-      setTimeout(() => {
-        // Simple validation
-        if (email && password.length >= 6) {
-          // Create mock user
-          const mockUser = {
-            id: 'user-123',
-            name: email.split('@')[0],
-            email,
-            avatar: `https://ui-avatars.com/api/?name=${email.split('@')[0]}&background=0D8ABC&color=fff`
-          };
-          setUser(mockUser);
-          localStorage.setItem('gemini_user', JSON.stringify(mockUser));
-          setIsLoading(false);
-          resolve(true);
-        } else {
-          setIsLoading(false);
-          resolve(false);
+    const initializeAuth = async () => {
+      const token = localStorage.getItem('auth_token');
+      const savedUser = localStorage.getItem('user_data');
+      
+      if (token && savedUser) {
+        try {
+          // Set token in API client
+          apiClient.setToken(token);
+          
+          // Verify token is still valid by fetching current user
+          const response = await authApi.getCurrentUser();
+          if (response.success && response.data) {
+            setUser(response.data);
+            localStorage.setItem('user_data', JSON.stringify(response.data));
+          } else {
+            // Token is invalid, clear everything
+            clearAuthData();
+          }
+        } catch (error) {
+          console.error('Token validation failed:', error);
+          clearAuthData();
         }
-      }, 1000);
-    });
-  };
-  const logout = () => {
+      }
+      setIsLoading(false);
+    };
+
+    initializeAuth();
+  }, []);
+
+  const clearAuthData = () => {
     setUser(null);
-    localStorage.removeItem('gemini_user');
+    apiClient.setToken(null);
+    localStorage.removeItem('auth_token');
+    localStorage.removeItem('user_data');
   };
-  const updateUser = (updates: Partial<User>) => {
-    setUser(prev => {
-      if (!prev) return prev;
-      const next = { ...prev, ...updates };
-      localStorage.setItem('gemini_user', JSON.stringify(next));
-      return next;
-    });
+
+  const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    
+    try {
+      const response = await authApi.login({ email, password });
+      
+      if (response.success && response.data) {
+        setUser(response.data.user);
+        apiClient.setToken(response.data.token);
+        localStorage.setItem('user_data', JSON.stringify(response.data.user));
+        setIsLoading(false);
+        return { success: true };
+      } else {
+        setIsLoading(false);
+        return { success: false, error: response.message || 'Login failed' };
+      }
+    } catch (error) {
+      setIsLoading(false);
+      const errorMessage = error instanceof Error ? error.message : 'Login failed';
+      return { success: false, error: errorMessage };
+    }
   };
-  return <AuthContext.Provider value={{
-    user,
-    isAuthenticated: !!user,
-    isLoading,
-    login,
-    logout,
-    updateUser
-  }}>
+
+  const signup = async (name: string, email: string, password: string): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    
+    try {
+      const response = await authApi.register({ name, email, password });
+      
+      if (response.success && response.data) {
+        setUser(response.data.user);
+        apiClient.setToken(response.data.token);
+        localStorage.setItem('user_data', JSON.stringify(response.data.user));
+        setIsLoading(false);
+        return { success: true };
+      } else {
+        setIsLoading(false);
+        return { success: false, error: response.message || 'Registration failed' };
+      }
+    } catch (error) {
+      setIsLoading(false);
+      const errorMessage = error instanceof Error ? error.message : 'Registration failed';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const logout = () => {
+    clearAuthData();
+  };
+
+  const updateUser = async (updates: Partial<User>): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const response = await authApi.updateProfile(updates);
+      
+      if (response.success && response.data) {
+        setUser(response.data);
+        localStorage.setItem('user_data', JSON.stringify(response.data));
+        return { success: true };
+      } else {
+        return { success: false, error: response.message || 'Update failed' };
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Update failed';
+      return { success: false, error: errorMessage };
+    }
+  };
+
+  const refreshUser = async (): Promise<void> => {
+    try {
+      const response = await authApi.getCurrentUser();
+      if (response.success && response.data) {
+        setUser(response.data);
+        localStorage.setItem('user_data', JSON.stringify(response.data));
+      }
+    } catch (error) {
+      console.error('Failed to refresh user data:', error);
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isLoading,
+        login,
+        signup,
+        logout,
+        updateUser,
+        refreshUser,
+      }}
+    >
       {children}
-    </AuthContext.Provider>;
+    </AuthContext.Provider>
+  );
 };

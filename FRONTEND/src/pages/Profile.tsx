@@ -3,6 +3,16 @@ import { Link } from 'react-router-dom';
 import { ChevronLeftIcon, UserIcon, MailIcon, KeyIcon, BellIcon, GlobeIcon, ShieldIcon } from 'lucide-react';
 import { useAuth } from '../components/AuthContext';
 import { Header } from '../components/Header';
+
+// Utility function to get full avatar URL
+const getAvatarUrl = (avatar?: string): string => {
+  if (!avatar) return '';
+  if (avatar.startsWith('http')) return avatar;
+  if (avatar.startsWith('/uploads/')) return `http://localhost:5000${avatar}`; // Use full backend URL with CORS
+  if (avatar.startsWith('data:')) return avatar; // base64 data
+  return avatar;
+};
+
 export const Profile: React.FC = () => {
   const {
     user,
@@ -76,14 +86,30 @@ export const Profile: React.FC = () => {
     localStorage.setItem('gemini_settings', JSON.stringify(next));
   };
   const handleAvatarFile = async (file: File) => {
-    const toBase64 = (f: File) => new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = reject;
-      reader.readAsDataURL(f);
-    });
-    const dataUrl = await toBase64(file);
-    setTempAvatar(dataUrl);
+    try {
+      const formData = new FormData();
+      formData.append('avatar', file);
+      
+      const response = await fetch('http://localhost:5000/api/upload/avatar', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
+        body: formData
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setTempAvatar(result.data.url);
+      } else {
+        console.error('Failed to upload avatar:', result.message);
+        alert('Failed to upload avatar: ' + result.message);
+      }
+    } catch (error) {
+      console.error('Error uploading avatar:', error);
+      alert('Error uploading avatar');
+    }
   };
   const isDirty = useMemo(() => {
     return tempName !== (user?.name || '') || tempEmail !== (user?.email || '') || tempAvatar !== (user?.avatar || '') || tempNick !== '' || tempGender !== '' || tempCountry !== '' || tempTimeZone !== '';
@@ -120,7 +146,7 @@ export const Profile: React.FC = () => {
             <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-5 sm:px-6">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <img src={user?.avatar} alt={user?.name || 'User'} className="h-24 w-24 rounded-full border-4 border-white shadow" />
+                  <img src={getAvatarUrl(user?.avatar)} alt={user?.name || 'User'} className="h-24 w-24 rounded-full border-4 border-white shadow" />
                 </div>
                 <div className="ml-6">
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -209,7 +235,7 @@ export const Profile: React.FC = () => {
             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Change profile photo</h3>
             <div className="space-y-4">
               <div className="flex items-center space-x-4">
-                <img src={tempAvatar || user?.avatar} alt="preview" className="h-16 w-16 rounded-full border" />
+                <img src={getAvatarUrl(tempAvatar || user?.avatar)} alt="preview" className="h-16 w-16 rounded-full border" />
                 <label className="inline-flex items-center px-3 py-2 border rounded-md cursor-pointer text-sm text-gray-700 dark:text-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40">
                   Upload
                   <input type="file" accept="image/*" className="hidden" onChange={e => {
