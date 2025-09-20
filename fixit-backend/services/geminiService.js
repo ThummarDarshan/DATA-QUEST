@@ -1,6 +1,7 @@
 // services/geminiService.js
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const logger = require('../utils/logger');
+const https = require('https');
 
 class GeminiService {
   constructor() {
@@ -9,6 +10,43 @@ class GeminiService {
     this.modelName = process.env.GEMINI_MODEL || "gemini-2.0-flash";
     this.model = this.genAI.getGenerativeModel({ model: this.modelName });
     this.chatModel = this.genAI.getGenerativeModel({ model: this.modelName });
+  }
+
+  // Get current date and time with fallback to system time
+  async getCurrentDateTime() {
+    try {
+      // Try to get real current date from worldtimeapi.org
+      return new Promise((resolve) => {
+        const req = https.get('https://worldtimeapi.org/api/timezone/UTC', (res) => {
+          let data = '';
+          res.on('data', (chunk) => data += chunk);
+          res.on('end', () => {
+            try {
+              const timeData = JSON.parse(data);
+              const realDate = new Date(timeData.utc_datetime);
+              resolve(realDate);
+            } catch (error) {
+              logger.warn('Failed to parse worldtimeapi response, using system time', { error: error.message });
+              resolve(new Date());
+            }
+          });
+        });
+        
+        req.on('error', (error) => {
+          logger.warn('Failed to fetch real time, using system time', { error: error.message });
+          resolve(new Date());
+        });
+        
+        req.setTimeout(3000, () => {
+          logger.warn('Timeout fetching real time, using system time');
+          req.destroy();
+          resolve(new Date());
+        });
+      });
+    } catch (error) {
+      logger.warn('Error getting current date, using system time', { error: error.message });
+      return new Date();
+    }
   }
 
   async generateResponse(messages, userId) {
@@ -23,6 +61,23 @@ class GeminiService {
         throw new Error('Last message must be from user');
       }
 
+      // Get current date and time for context (try to get real time, fallback to system time)
+      const now = await this.getCurrentDateTime();
+      const currentDate = now.toLocaleDateString('en-US', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+      const currentTime = now.toLocaleTimeString('en-US', { 
+        hour: '2-digit', 
+        minute: '2-digit',
+        timeZoneName: 'short'
+      });
+
+      // Add system context for date/time queries
+      const systemContext = `Current date and time: ${currentDate} at ${currentTime}. When asked about the current date, time, or "today", always provide this accurate information. If the user mentions that the date seems wrong, acknowledge that this is the current system date and time.`;
+
       // Start chat with history
       const chat = this.chatModel.startChat({
         history: chatHistory.slice(0, -1), // Exclude the last message
@@ -34,8 +89,9 @@ class GeminiService {
         },
       });
 
-      // Send the current message
-      const result = await chat.sendMessage(userMessage.content);
+      // Send the current message with system context
+      const messageWithContext = `${systemContext}\n\nUser: ${userMessage.content}`;
+      const result = await chat.sendMessage(messageWithContext);
       const response = result.response;
       const text = response.text();
 
@@ -45,7 +101,10 @@ class GeminiService {
       logger.info(`Gemini API call successful for user ${userId}`, {
         userId,
         responseLength: text.length,
-        estimatedTokens: tokens
+        estimatedTokens: tokens,
+        currentDate: currentDate,
+        currentTime: currentTime,
+        userMessage: userMessage.content.substring(0, 100) // Log first 100 chars of user message
       });
 
       return {

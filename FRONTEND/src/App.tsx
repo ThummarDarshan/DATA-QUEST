@@ -8,15 +8,7 @@ import { useChatSessions, useChatMessages } from './hooks/useApi';
 import { ErrorMessage } from './components/ErrorMessage';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { FileUploadModal } from './components/FileUpload';
-
-// Utility function to get full avatar URL
-const getAvatarUrl = (avatar?: string): string => {
-  if (!avatar) return '';
-  if (avatar.startsWith('http')) return avatar;
-  if (avatar.startsWith('/uploads/')) return `http://localhost:5000${avatar}`; // Use full backend URL with CORS
-  if (avatar.startsWith('data:')) return avatar; // base64 data
-  return avatar;
-};
+import { getImageUrl } from './services/api';
 
 // Utility function to format timestamps
 const formatTimestamp = (timestamp: any): string => {
@@ -503,7 +495,7 @@ export function App() {
                 <div className="flex items-start">
                   {/* Avatar */}
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-4 shadow-sm ${message.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                    {message.role === 'user' ? user ? <img src={getAvatarUrl(user.avatar)} alt={user.name} className="w-8 h-8 rounded-full" /> : 'U' : <Sparkles className="h-4 w-4" />}
+                    {message.role === 'user' ? user ? <img src={getImageUrl(user.avatar)} alt={user.name} className="w-8 h-8 rounded-full" /> : 'U' : <Sparkles className="h-4 w-4" />}
                   </div>
                   {/* Message content */}
                   <div className={`flex-1 prose prose-slate dark:prose-invert max-w-none ${message.role === 'assistant' ? 'bg-white p-4 rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700' : ''}`}>

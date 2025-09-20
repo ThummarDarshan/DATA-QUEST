@@ -4,6 +4,7 @@ import { UserIcon, LogOutIcon, Settings, Bell } from 'lucide-react';
 import { useAuth } from './AuthContext';
 import { useUnreadNotificationCount } from '../hooks/useApi';
 import { NotificationCenter } from './NotificationCenter';
+import { getImageUrl } from '../services/api';
 export const Header: React.FC = () => {
   const {
     user,
@@ -100,7 +101,7 @@ export const Header: React.FC = () => {
                   onClick={() => setMenuOpen(!menuOpen)}
                 >
                   <img
-                    src={user?.avatar}
+                    src={getImageUrl(user?.avatar)}
                     alt={user?.name || "User"}
                     className="w-8 h-8 rounded-full border border-gray-200"
                   />

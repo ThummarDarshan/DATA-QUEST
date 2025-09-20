@@ -1,5 +1,15 @@
 // API Configuration
 const API_BASE_URL = 'http://localhost:5000/api';
+const BACKEND_BASE_URL = 'http://localhost:5000';
+
+// Utility function to get full image URL
+export const getImageUrl = (imagePath?: string): string => {
+  if (!imagePath) return '';
+  if (imagePath.startsWith('http')) return imagePath;
+  if (imagePath.startsWith('/uploads/')) return `${BACKEND_BASE_URL}${imagePath}`;
+  if (imagePath.startsWith('data:')) return imagePath; // base64 data
+  return imagePath;
+};
 
 // Types
 export interface User {
@@ -281,7 +291,7 @@ class ApiClient {
       formData.append('sessionId', sessionId);
     }
 
-    const url = `${this.baseURL}/upload`;
+    const url = `${this.baseURL}/upload/file`;
     const headers: HeadersInit = {};
 
     if (this.token) {
@@ -298,6 +308,32 @@ class ApiClient {
 
     if (!response.ok) {
       throw new Error(data.message || data.error || 'Upload failed');
+    }
+
+    return data;
+  }
+
+  async uploadAvatar(file: File): Promise<ApiResponse<{ url: string; filename: string }>> {
+    const formData = new FormData();
+    formData.append('avatar', file);
+
+    const url = `${this.baseURL}/upload/avatar`;
+    const headers: HeadersInit = {};
+
+    if (this.token) {
+      headers.Authorization = `Bearer ${this.token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || data.error || 'Avatar upload failed');
     }
 
     return data;
@@ -359,6 +395,7 @@ export const notificationApi = {
 export const uploadApi = {
   uploadFile: (file: File, sessionId?: string) =>
     apiClient.uploadFile(file, sessionId),
+  uploadAvatar: (file: File) => apiClient.uploadAvatar(file),
   getFiles: () => apiClient.getUploadedFiles(),
 };
 
