@@ -1,0 +1,55 @@
+This is a sample manual content that can be used for testing.
+You can replace this with actual PDF files.
+
+Sample Manual Content:
+=====================
+
+1. Introduction
+This is a sample manual for testing PDF processing and vector storage.
+
+2. Installation
+To install this software, follow these steps:
+- Download the installer
+- Run the setup wizard
+- Configure your settings
+- Restart the application
+
+3. Configuration
+The application can be configured through:
+- Settings menu
+- Configuration file
+- Environment variables
+- Command line parameters
+
+4. Usage
+Basic usage instructions:
+- Start the application
+- Select your options
+- Process your data
+- View results
+
+5. Troubleshooting
+Common issues and solutions:
+- Connection problems: Check network settings
+- Performance issues: Increase memory allocation
+- Error messages: Check log files
+
+6. API Reference
+The application provides REST API endpoints:
+- GET /api/status - Get application status
+- POST /api/process - Process data
+- GET /api/results - Get processing results
+
+7. Security
+Security considerations:
+- Use strong passwords
+- Enable two-factor authentication
+- Keep software updated
+- Monitor access logs
+
+8. Support
+For support and assistance:
+- Check documentation
+- Contact support team
+- Submit bug reports
+- Join community forum
