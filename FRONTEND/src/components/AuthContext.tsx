@@ -42,8 +42,10 @@ export const AuthProvider: React.FC<{
           // Verify token is still valid by fetching current user
           const response = await authApi.getCurrentUser();
           if (response.success && response.data) {
-            setUser(response.data);
-            localStorage.setItem('user_data', JSON.stringify(response.data));
+            // Backend returns { data: { user: ..., unreadNotifications: ... } }
+            const userData = response.data.user;
+            setUser(userData);
+            localStorage.setItem('user_data', JSON.stringify(userData));
           } else {
             // Token is invalid, clear everything
             clearAuthData();
@@ -121,8 +123,10 @@ export const AuthProvider: React.FC<{
       const response = await authApi.updateProfile(updates);
       
       if (response.success && response.data) {
-        setUser(response.data);
-        localStorage.setItem('user_data', JSON.stringify(response.data));
+        // Backend returns { data: { user: ... } }
+        const updatedUser = response.data.user || response.data;
+        setUser(updatedUser);
+        localStorage.setItem('user_data', JSON.stringify(updatedUser));
         return { success: true };
       } else {
         return { success: false, error: response.message || 'Update failed' };
@@ -137,8 +141,10 @@ export const AuthProvider: React.FC<{
     try {
       const response = await authApi.getCurrentUser();
       if (response.success && response.data) {
-        setUser(response.data);
-        localStorage.setItem('user_data', JSON.stringify(response.data));
+        // Backend returns { data: { user: ..., unreadNotifications: ... } }
+        const userData = response.data.user;
+        setUser(userData);
+        localStorage.setItem('user_data', JSON.stringify(userData));
       }
     } catch (error) {
       console.error('Failed to refresh user data:', error);

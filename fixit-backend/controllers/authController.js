@@ -127,12 +127,16 @@ const getMe = asyncHandler(async (req, res) => {
 const updateProfile = asyncHandler(async (req, res) => {
   const { name, avatar, settings } = req.body;
   
+  console.log('Profile update request:', { name, avatar, settings });
+  console.log('Current user avatar:', req.user.avatar);
+  
   const updateData = {};
   if (name) updateData.name = name;
   if (settings) updateData.settings = settings;
   
   // Handle avatar update
   if (avatar) {
+    console.log('Updating avatar from:', req.user.avatar, 'to:', avatar);
     // If avatar is a file URL (starts with /uploads/), store it directly
     if (avatar.startsWith('/uploads/')) {
       updateData.avatar = avatar;
@@ -144,9 +148,15 @@ const updateProfile = asyncHandler(async (req, res) => {
 
   await req.user.update(updateData);
 
+  // Reload the user to get the updated data
+  await req.user.reload();
+
+  console.log('Updated user avatar:', req.user.avatar);
+
   logger.info('User profile updated', {
     userId: req.user.id,
-    fieldsUpdated: Object.keys(updateData)
+    fieldsUpdated: Object.keys(updateData),
+    newAvatar: req.user.avatar
   });
 
   res.json({

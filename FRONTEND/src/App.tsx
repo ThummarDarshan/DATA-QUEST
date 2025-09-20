@@ -495,7 +495,7 @@ export function App() {
                 <div className="flex items-start">
                   {/* Avatar */}
                   <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mr-4 shadow-sm ${message.role === 'user' ? 'bg-blue-100 text-blue-600' : 'bg-emerald-100 text-emerald-600'}`}>
-                    {message.role === 'user' ? user ? <img src={getImageUrl(user.avatar)} alt={user.name} className="w-8 h-8 rounded-full" /> : 'U' : <Sparkles className="h-4 w-4" />}
+                    {message.role === 'user' ? user ? <img key={user.avatar} src={getImageUrl(user.avatar, true)} alt={user.name} className="w-8 h-8 rounded-full" /> : 'U' : <Sparkles className="h-4 w-4" />}
                   </div>
                   {/* Message content */}
                   <div className={`flex-1 prose prose-slate dark:prose-invert max-w-none ${message.role === 'assistant' ? 'bg-white p-4 rounded-lg shadow-sm border border-gray-100 dark:bg-gray-800 dark:border-gray-700' : ''}`}>

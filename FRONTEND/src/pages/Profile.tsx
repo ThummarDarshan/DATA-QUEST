@@ -8,7 +8,8 @@ import { uploadApi, getImageUrl } from '../services/api';
 export const Profile: React.FC = () => {
   const {
     user,
-    updateUser
+    updateUser,
+    refreshUser
   } = useAuth();
   const [isPhotoOpen, setIsPhotoOpen] = useState(false);
   const [isPersonalOpen, setIsPersonalOpen] = useState(false);
@@ -99,6 +100,7 @@ export const Profile: React.FC = () => {
     setSuccessMessage(msg);
     window.setTimeout(() => setSuccessMessage(''), 2000);
   };
+
   return <div className="flex flex-col min-h-screen bg-gray-50 dark:bg-gray-900">
       <Header />
       <main className="flex-1 py-8">
@@ -127,7 +129,18 @@ export const Profile: React.FC = () => {
             <div className="border-b border-gray-200 dark:border-gray-700 px-4 py-5 sm:px-6">
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <img src={getImageUrl(user?.avatar)} alt={user?.name || 'User'} className="h-24 w-24 rounded-full border-4 border-white shadow" />
+                  {user?.avatar ? (
+                    <img 
+                      key={user?.avatar} 
+                      src={getImageUrl(user?.avatar, true)} 
+                      alt={user?.name || 'User'} 
+                      className="h-24 w-24 rounded-full border-4 border-white shadow"
+                    />
+                  ) : (
+                    <div className="h-24 w-24 rounded-full border-4 border-white shadow bg-gray-200 flex items-center justify-center">
+                      <span className="text-gray-500 text-2xl">👤</span>
+                    </div>
+                  )}
                 </div>
                 <div className="ml-6">
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
@@ -216,7 +229,11 @@ export const Profile: React.FC = () => {
             <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">Change profile photo</h3>
             <div className="space-y-4">
               <div className="flex items-center space-x-4">
-                <img src={getImageUrl(tempAvatar || user?.avatar)} alt="preview" className="h-16 w-16 rounded-full border" />
+                <img 
+                  src={getImageUrl(tempAvatar || user?.avatar, true)} 
+                  alt="preview" 
+                  className="h-16 w-16 rounded-full border"
+                />
                 <label className="inline-flex items-center px-3 py-2 border rounded-md cursor-pointer text-sm text-gray-700 dark:text-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40">
                   Upload
                   <input type="file" accept="image/*" className="hidden" onChange={e => {
@@ -227,7 +244,17 @@ export const Profile: React.FC = () => {
               </div>
               <div className="flex justify-end space-x-2">
                 <button onClick={() => setIsPhotoOpen(false)} className="px-4 py-2 rounded-md border dark:border-gray-700 dark:text-gray-100">Cancel</button>
-                <button onClick={() => { updateUser({ avatar: tempAvatar }); setIsPhotoOpen(false); showSuccess('Photo updated'); }} className="px-4 py-2 rounded-md text-white bg-blue-600">Save</button>
+                <button onClick={async () => { 
+                  const result = await updateUser({ avatar: tempAvatar }); 
+                  if (result.success) {
+                    // Force refresh user data to get the latest avatar
+                    await refreshUser();
+                    setIsPhotoOpen(false); 
+                    showSuccess('Photo updated'); 
+                  } else {
+                    alert('Failed to update photo: ' + result.error);
+                  }
+                }} className="px-4 py-2 rounded-md text-white bg-blue-600">Save</button>
               </div>
             </div>
           </div>

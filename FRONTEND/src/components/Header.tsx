@@ -101,7 +101,8 @@ export const Header: React.FC = () => {
                   onClick={() => setMenuOpen(!menuOpen)}
                 >
                   <img
-                    src={getImageUrl(user?.avatar)}
+                    key={user?.avatar}
+                    src={getImageUrl(user?.avatar, true)}
                     alt={user?.name || "User"}
                     className="w-8 h-8 rounded-full border border-gray-200"
                   />

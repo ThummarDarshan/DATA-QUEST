@@ -2,11 +2,29 @@
 const API_BASE_URL = 'http://localhost:5000/api';
 const BACKEND_BASE_URL = 'http://localhost:5000';
 
+// Get the current origin (frontend URL) for image URLs
+const getImageBaseUrl = () => {
+  // In development, use the current origin (localhost:5173) which has proxy to backend
+  // In production, use the backend URL directly
+  if (typeof window !== 'undefined') {
+    return window.location.origin; // This will be http://localhost:5173 in dev
+  }
+  return BACKEND_BASE_URL;
+};
+
 // Utility function to get full image URL
-export const getImageUrl = (imagePath?: string): string => {
+export const getImageUrl = (imagePath?: string, forceRefresh?: boolean): string => {
   if (!imagePath) return '';
   if (imagePath.startsWith('http')) return imagePath;
-  if (imagePath.startsWith('/uploads/')) return `${BACKEND_BASE_URL}${imagePath}`;
+  if (imagePath.startsWith('/uploads/')) {
+    const baseUrl = getImageBaseUrl();
+    const url = `${baseUrl}${imagePath}`;
+    // Add cache-busting parameter only when forceRefresh is true
+    if (forceRefresh) {
+      return `${url}?t=${Date.now()}`;
+    }
+    return url;
+  }
   if (imagePath.startsWith('data:')) return imagePath; // base64 data
   return imagePath;
 };
