@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const VectorController = require('../controllers/vectorController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 /**
  * Vector Routes for Pinecone operations
@@ -9,18 +9,18 @@ const auth = require('../middleware/auth');
  */
 
 // Initialize Pinecone service
-router.post('/initialize', auth, VectorController.initialize);
+router.post('/initialize', authenticateToken, VectorController.initialize);
 
 // Get service status
-router.get('/status', auth, VectorController.getStatus);
+router.get('/status', authenticateToken, VectorController.getStatus);
 
 // Get index statistics
-router.get('/stats', auth, VectorController.getStats);
+router.get('/stats', authenticateToken, VectorController.getStats);
 
 // Search for similar vectors
-router.post('/search', auth, VectorController.search);
+router.post('/search', authenticateToken, VectorController.search);
 
 // Store vectors
-router.post('/store', auth, VectorController.store);
+router.post('/store', authenticateToken, VectorController.store);
 
 module.exports = router;

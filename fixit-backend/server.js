@@ -22,7 +22,6 @@ const chatRoutes = require('./routes/chatRoutes');
 const notificationRoutes = require('./routes/notificationRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
 const pdfRoutes = require('./routes/pdfRoutes');
-const vectorRoutes = require('./routes/vectorRoutes');
 
 // Create Express app
 const app = express();
@@ -86,7 +85,6 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/pdf', pdfRoutes);
-app.use('/api/vectors', vectorRoutes);
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {

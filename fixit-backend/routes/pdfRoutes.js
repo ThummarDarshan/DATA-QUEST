@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const router = express.Router();
 const PDFController = require('../controllers/pdfController');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Configure multer for PDF uploads
 const storage = multer.memoryStorage();
@@ -26,21 +26,21 @@ const upload = multer({
  */
 
 // Upload PDF
-router.post('/upload', auth, upload.single('pdf'), PDFController.uploadPDF);
+router.post('/upload', authenticateToken, upload.single('pdf'), PDFController.uploadPDF);
 
 // Search PDFs
-router.post('/search', auth, PDFController.searchPDFs);
+router.post('/search', authenticateToken, PDFController.searchPDFs);
 
 // List user's PDFs
-router.get('/list', auth, PDFController.listPDFs);
+router.get('/list', authenticateToken, PDFController.listPDFs);
 
 // Get PDF details
-router.get('/details/:fileName', auth, PDFController.getPDFDetails);
+router.get('/details/:fileName', authenticateToken, PDFController.getPDFDetails);
 
 // Delete PDF
-router.delete('/delete/:fileName', auth, PDFController.deletePDF);
+router.delete('/delete/:fileName', authenticateToken, PDFController.deletePDF);
 
 // Get PDF statistics
-router.get('/stats', auth, PDFController.getPDFStats);
+router.get('/stats', authenticateToken, PDFController.getPDFStats);
 
 module.exports = router;
